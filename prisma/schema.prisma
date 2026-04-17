@@ -1,0 +1,115 @@
+generator client {
+  provider = "prisma-client-js" // Generates Prisma Client for database access
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL") // Database connection string from environment
+}
+
+model User {
+  id        String   @id @default(uuid()) // UUID used instead of auto-increment for better scalability/distribution
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(USER) // Role-based access control (RBAC)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bookings        Booking[]
+  refreshTokens   RefreshToken[]
+  auditLogs       AuditLog[]
+
+  @@index([email]) // Speeds up lookup during login
+  @@index([role]) // Useful for filtering admins/users
+  @@index([createdAt]) // Useful for analytics / sorting users
+}
+
+model Service {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  price       Float
+  duration    Int // Duration in minutes (important assumption)
+  isAvailable Boolean   @default(true) // Soft availability toggle
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime? // Soft delete (null = active)
+
+  bookings Booking[]
+
+  @@index([name])
+  @@index([isAvailable, price]) // Optimized for filtering available services with price sorting
+  @@index([deletedAt]) // Required for efficient soft delete queries
+}
+
+model Booking {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serviceId  String
+  service    Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  startTime  DateTime
+  endTime    DateTime
+  status     BookingStatus @default(PENDING)
+  totalPrice Float // Snapshot of price at booking time (prevents issues if service price changes later)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  deletedAt  DateTime? // Soft delete for bookings as well
+
+  @@index([userId])
+  @@index([serviceId])
+  @@index([startTime, endTime]) // Helps detect overlapping bookings
+  @@index([serviceId, startTime, endTime]) // Critical for availability checks per service
+  @@index([userId, status])
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+  @@index([deletedAt])
+}
+
+model RefreshToken {
+  id         String   @id @default(uuid())
+  token      String   @unique // Should be securely generated (e.g., crypto random)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  familyId   String // Used for token rotation (token families)
+  expiresAt  DateTime
+  revokedAt  DateTime? // If set, token is invalidated
+  createdAt  DateTime @default(now())
+  deviceInfo String? // Optional: track device/session
+
+  @@index([userId])
+  @@index([familyId]) // Important for invalidating entire token family
+  @@index([expiresAt]) // Cleanup / cron jobs
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String? // Nullable: actions can be system-generated
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String // e.g., "CREATE_BOOKING", "DELETE_USER"
+  entity    String // e.g., "Booking", "User"
+  entityId  String?
+  oldValue  Json? // Snapshot before change
+  newValue  Json? // Snapshot after change
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt]) // Important for audit queries / timelines
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
