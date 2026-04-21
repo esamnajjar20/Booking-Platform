@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ConflictError, NotFoundError } from '../../../src/utils/errors';
+import { ConflictError, NotFoundError } from '../../../../src/utils/errors';
 
-vi.mock('../../../src/config/database', () => ({
+vi.mock('../../../../src/config/database', () => ({
   default: {
     service: {
       findMany: vi.fn(),
@@ -13,16 +13,16 @@ vi.mock('../../../src/config/database', () => ({
   }
 }));
 
-vi.mock('../../../src/services/cache.service', () => ({
+vi.mock('../../../../src/services/cache.service', () => ({
   cacheService: {
     getOrSet: vi.fn(async (_key: string, fetchFn: () => any) => fetchFn()),
     delete: vi.fn()
   }
 }));
 
-import prisma from '../../../src/config/database';
-import { cacheService } from '../../../src/services/cache.service';
-import { ServiceService } from '../../../src/services/service.service';
+import prisma from '../../../../src/config/database';
+import { cacheService } from '../../../../src/services/cache.service';
+import { ServiceService } from '../../../../src/services/service.service';
 
 describe('ServiceService', () => {
   let service: ServiceService;

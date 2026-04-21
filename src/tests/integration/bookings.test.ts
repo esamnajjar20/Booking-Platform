@@ -43,6 +43,7 @@ import jwt from 'jsonwebtoken';
 import bookingsRoutes from '../../../src/routes/v1/bookings.routes';
 import { errorHandler } from '../../../src/middleware/error.middleware';
 import prisma from '../../../src/config/database';
+import { ConflictError, NotFoundError } from '../../../src/utils/errors';
 
 const makeApp = () => {
   const app = express();
@@ -98,6 +99,28 @@ describe('Integration: bookings endpoints', () => {
     expect(res.body.data.id).toBe('b1');
   });
 
+  it('GET /bookings/:id validates booking id param', async () => {
+    const app = makeApp();
+    const res = await request(app)
+      .get('/api/v1/bookings/not-a-uuid')
+      .set('Authorization', 'Bearer user-token');
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('GET /bookings/:id returns 404 on permission mismatch (not owner)', async () => {
+    bookingServiceMock.getById.mockRejectedValue(new NotFoundError('Booking'));
+
+    const app = makeApp();
+    const res = await request(app)
+      .get('/api/v1/bookings/11111111-1111-1111-1111-111111111111')
+      .set('Authorization', 'Bearer user-token');
+
+    expect(res.status).toBe(404);
+    expect(res.body.success).toBe(false);
+  });
+
   it('POST /bookings creates booking', async () => {
     bookingServiceMock.create.mockResolvedValue({ id: 'b1' });
 
@@ -128,6 +151,19 @@ describe('Integration: bookings endpoints', () => {
     expect(res.body.success).toBe(true);
   });
 
+  it('PATCH /bookings/:id/cancel returns conflict when already cancelled', async () => {
+    bookingServiceMock.cancel.mockRejectedValue(new ConflictError('Already cancelled'));
+
+    const app = makeApp();
+    const res = await request(app)
+      .patch('/api/v1/bookings/11111111-1111-1111-1111-111111111111/cancel')
+      .set('Authorization', 'Bearer user-token');
+
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toMatch(/already cancelled/i);
+  });
+
   it('PATCH /bookings/:id/confirm requires ADMIN', async () => {
     const app = makeApp();
     const res = await request(app)
@@ -149,5 +185,20 @@ describe('Integration: bookings endpoints', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.status).toBe('CONFIRMED');
+  });
+
+  it('PATCH /bookings/:id/confirm returns conflict when booking was cancelled', async () => {
+    bookingServiceMock.confirm.mockRejectedValue(
+      new ConflictError('Only pending bookings can be confirmed')
+    );
+
+    const app = makeApp();
+    const res = await request(app)
+      .patch('/api/v1/bookings/11111111-1111-1111-1111-111111111111/confirm')
+      .set('Authorization', 'Bearer admin-token');
+
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toMatch(/only pending bookings can be confirmed/i);
   });
 });

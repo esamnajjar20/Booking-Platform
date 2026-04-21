@@ -1,26 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ConflictError, NotFoundError } from '../../../src/utils/errors';
+import { ConflictError, NotFoundError } from '../../../../src/utils/errors';
 
-vi.mock('../../../src/utils/logger', () => ({
+vi.mock('../../../../src/utils/logger', () => ({
   default: {
     info: vi.fn()
   }
 }));
 
-vi.mock('../../../src/services/audit.service', () => ({
+vi.mock('../../../../src/services/audit.service', () => ({
   AuditService: {
     log: vi.fn()
   }
 }));
 
-vi.mock('../../../src/services/cache.service', () => ({
+vi.mock('../../../../src/services/cache.service', () => ({
   cacheService: {
     getOrSet: vi.fn(async (_key: string, fetchFn: () => any) => fetchFn()),
     delete: vi.fn()
   }
 }));
 
-vi.mock('../../../src/config/database', () => ({
+vi.mock('../../../../src/config/database', () => ({
   default: {
     booking: {
       findMany: vi.fn(),
@@ -32,11 +32,11 @@ vi.mock('../../../src/config/database', () => ({
   }
 }));
 
-import prisma from '../../../src/config/database';
-import { cacheService } from '../../../src/services/cache.service';
-import { AuditService } from '../../../src/services/audit.service';
-import logger from '../../../src/utils/logger';
-import { BookingService } from '../../../src/services/booking.service';
+import prisma from '../../../../src/config/database';
+import { cacheService } from '../../../../src/services/cache.service';
+import { AuditService } from '../../../../src/services/audit.service';
+import logger from '../../../../src/utils/logger';
+import { BookingService } from '../../../../src/services/booking.service';
 
 describe('BookingService', () => {
   let service: BookingService;

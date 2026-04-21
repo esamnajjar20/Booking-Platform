@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AuthService } from '../../../src/services/auth.service';
+import { AuthService } from '../../../../src/services/auth.service';
 import { Response } from 'express';
 
 // ================= MOCKS =================
@@ -22,7 +22,7 @@ vi.mock('jsonwebtoken', () => ({
   verify: vi.fn()
 }));
 
-vi.mock('../../../src/config/redis', () => ({
+vi.mock('../../../../src/config/redis', () => ({
   default: {
     get: vi.fn(),
     setex: vi.fn(),
@@ -30,7 +30,7 @@ vi.mock('../../../src/config/redis', () => ({
   }
 }));
 
-vi.mock('../../../src/config/database', () => ({
+vi.mock('../../../../src/config/database', () => ({
   default: {
     user: {
       findUnique: vi.fn(),
@@ -50,8 +50,8 @@ vi.mock('../../../src/config/database', () => ({
 
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import redis from '../../../src/config/redis';
-import prisma from '../../../src/config/database';
+import redis from '../../../../src/config/redis';
+import prisma from '../../../../src/config/database';
 
 // ================= TEST SUITE =================
 

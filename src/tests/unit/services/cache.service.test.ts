@@ -1,19 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../../../src/config/env', () => ({
+vi.mock('../../../../src/config/env', () => ({
   config: {
     CACHE_TTL: 123
   }
 }));
 
-vi.mock('../../../src/utils/logger', () => ({
+vi.mock('../../../../src/utils/logger', () => ({
   default: {
     debug: vi.fn(),
     error: vi.fn()
   }
 }));
 
-vi.mock('../../../src/config/redis', () => ({
+vi.mock('../../../../src/config/redis', () => ({
   default: {
     get: vi.fn(),
     setex: vi.fn(),
@@ -22,9 +22,9 @@ vi.mock('../../../src/config/redis', () => ({
   }
 }));
 
-import { CacheService } from '../../../src/services/cache.service';
-import redis from '../../../src/config/redis';
-import logger from '../../../src/utils/logger';
+import { CacheService } from '../../../../src/services/cache.service';
+import redis from '../../../../src/config/redis';
+import logger from '../../../../src/utils/logger';
 
 describe('CacheService', () => {
   let service: CacheService;
