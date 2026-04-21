@@ -48,8 +48,10 @@ describe('Integration: services endpoints', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (jwt.verify as any).mockImplementation((token: string) => {
-      if (token === 'admin-token') return { id: 'admin', email: 'a@a.com', role: 'ADMIN' };
-      return { id: 'u1', email: 'u@u.com', role: 'USER' };
+      if (token === 'admin-token') {
+        return { id: 'admin', email: 'a@a.com', role: 'ADMIN', type: 'access' };
+      }
+      return { id: 'u1', email: 'u@u.com', role: 'USER', type: 'access' };
     });
   });
 

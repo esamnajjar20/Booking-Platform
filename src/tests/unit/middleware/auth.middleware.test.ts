@@ -60,13 +60,23 @@ describe('authenticate middleware', () => {
   });
 
   it('attaches user and calls next on valid token', () => {
-    (jwt.verify as any).mockReturnValue({ id: '1', email: 'a@a.com', role: 'USER' });
+    (jwt.verify as any).mockReturnValue({ id: '1', email: 'a@a.com', role: 'USER', type: 'access' });
 
     const req = makeReq('Bearer t');
     authenticate(req, makeRes(), next);
 
-    expect(req.user).toEqual({ id: '1', email: 'a@a.com', role: 'USER' });
+    expect(req.user).toEqual({ id: '1', email: 'a@a.com', role: 'USER', tokenType: 'access' });
     expect(next).toHaveBeenCalledWith();
+  });
+
+  it('rejects when token type is not access', () => {
+    (jwt.verify as any).mockReturnValue({ id: '1', email: 'a@a.com', role: 'USER', type: 'refresh' });
+
+    const req = makeReq('Bearer t');
+    authenticate(req, makeRes(), next);
+
+    expect(next).toHaveBeenCalledWith(expect.any(UnauthorizedError));
+    expect((next as any).mock.calls[0][0].message).toMatch(/type/i);
   });
 
   it('rejects when jwt.verify throws', () => {

@@ -1,10 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
-import { AuthService } from '../services/auth.service';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { ResponseWrapper } from '../utils/response';
 import prisma from '../config/database';
-
-const authService = new AuthService();
+import { authService } from '../services/service.container';
+import { config } from '../config/env';
 
 export class AuthController {
   async register(req: Request, res: Response, next: NextFunction) {
@@ -47,8 +46,9 @@ export class AuthController {
       // `sameSite: 'strict'` prevents CSRF but may break cross-origin flows
       res.cookie('refreshToken', tokens.refreshToken, {
         httpOnly: true,
-        secure: true,
-        sameSite: 'strict'
+        secure: config.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000
       });
 
       ResponseWrapper.success(res, { accessToken: tokens.accessToken }, 'Token refreshed');

@@ -28,7 +28,19 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(3000),
   BASE_URL: z.string().url().default('http://localhost:3000'),
+  TRUST_PROXY: z.preprocess((value) => {
+    if (value === undefined) return false;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'true' || normalized === '1') return 1;
+      if (normalized === 'false' || normalized === '0' || normalized === '') return false;
+      const asNumber = Number(normalized);
+      if (Number.isFinite(asNumber)) return asNumber;
+    }
+    return value;
+  }, z.union([z.literal(false), z.number().int().nonnegative()])).default(false),
   
+  HEALTHCHECK_TOKEN: z.string().min(16).optional(),
 
   // =========================
   // Database

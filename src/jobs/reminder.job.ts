@@ -4,6 +4,9 @@ import logger from '../utils/logger';
 import redis from '../config/redis';
 
 const RETRY_QUEUE_KEY = 'reminder:retry';
+const LOCK_KEY = 'reminder:lock';
+const LOCK_TTL_SECONDS = 55 * 60;
+let isRunning = false;
 
 async function sendReminder(booking: any, retryCount = 0) {
   try {
@@ -30,28 +33,49 @@ async function sendReminder(booking: any, retryCount = 0) {
 
 export function startReminderJob() {
   cron.schedule('0 * * * *', async () => {
-    logger.info('Running reminder job');
-    const now = new Date();
-    const startWindow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    const endWindow = new Date(startWindow.getTime() + 60 * 60 * 1000);
-    const upcoming = await prisma.booking.findMany({
-      where: {
-        startTime: { gte: startWindow, lt: endWindow },
-        status: 'CONFIRMED',
-        deletedAt: null
-      },
-      include: { user: true, service: true }
-    });
-    for (const booking of upcoming) {
-      await sendReminder(booking);
+    if (isRunning) {
+      logger.warn('Skipping reminder job: previous run still in progress');
+      return;
     }
 
-    const nowMs = Date.now();
-    const retries = await redis.zrangebyscore(RETRY_QUEUE_KEY, 0, nowMs);
-    for (const item of retries) {
-      const { booking, retryCount } = JSON.parse(item);
-      await sendReminder(booking, retryCount);
-      await redis.zrem(RETRY_QUEUE_KEY, item);
+    const lockValue = `${process.pid}:${Date.now()}`;
+    const acquired = await redis.set(LOCK_KEY, lockValue, 'EX', LOCK_TTL_SECONDS, 'NX');
+    if (acquired !== 'OK') {
+      logger.info('Skipping reminder job: lock not acquired');
+      return;
+    }
+
+    isRunning = true;
+    logger.info('Running reminder job');
+    try {
+      const now = new Date();
+      const startWindow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      const endWindow = new Date(startWindow.getTime() + 60 * 60 * 1000);
+      const upcoming = await prisma.booking.findMany({
+        where: {
+          startTime: { gte: startWindow, lt: endWindow },
+          status: 'CONFIRMED',
+          deletedAt: null
+        },
+        include: { user: true, service: true }
+      });
+      for (const booking of upcoming) {
+        await sendReminder(booking);
+      }
+
+      const nowMs = Date.now();
+      const retries = await redis.zrangebyscore(RETRY_QUEUE_KEY, 0, nowMs);
+      for (const item of retries) {
+        const { booking, retryCount } = JSON.parse(item);
+        await sendReminder(booking, retryCount);
+        await redis.zrem(RETRY_QUEUE_KEY, item);
+      }
+    } finally {
+      isRunning = false;
+      const currentValue = await redis.get(LOCK_KEY);
+      if (currentValue === lockValue) {
+        await redis.del(LOCK_KEY);
+      }
     }
   });
 }

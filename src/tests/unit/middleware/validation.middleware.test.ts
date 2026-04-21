@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   validateBody,
   validateParams,
@@ -12,6 +12,14 @@ import {
 import { ValidationError } from '../../../../src/utils/errors';
 
 describe('validation.middleware', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('validateBody parses and replaces body on success', () => {
     const req: any = { body: { email: 'a@a.com', password: '12345678', name: 'AA' } };
     const next = vi.fn();
@@ -39,10 +47,22 @@ describe('validation.middleware', () => {
   });
 
   it('createBookingSchema rejects invalid time ranges', () => {
+    vi.setSystemTime(new Date('2026-01-01T09:00:00.000Z'));
     const result = createBookingSchema.safeParse({
       serviceId: '11111111-1111-1111-1111-111111111111',
       startTime: '2026-01-01T11:00:00.000Z',
       endTime: '2026-01-01T10:00:00.000Z'
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('createBookingSchema rejects startTime in the past', () => {
+    vi.setSystemTime(new Date('2026-01-01T12:00:00.000Z'));
+    const result = createBookingSchema.safeParse({
+      serviceId: '11111111-1111-1111-1111-111111111111',
+      startTime: '2026-01-01T11:00:00.000Z',
+      endTime: '2026-01-01T13:00:00.000Z'
     });
 
     expect(result.success).toBe(false);

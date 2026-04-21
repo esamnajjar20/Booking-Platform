@@ -6,13 +6,11 @@
  */
 
 import { Response, NextFunction } from 'express';
-import { BookingService } from '../services/booking.service';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { ResponseWrapper } from '../utils/response';
 import { getPagination } from '../utils/pagination';
 import prisma from '../config/database';
-
-const bookingService = new BookingService();
+import { bookingService } from '../services/service.container';
 
 export class BookingController {
 

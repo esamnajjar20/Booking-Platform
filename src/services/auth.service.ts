@@ -52,8 +52,15 @@ export class AuthService {
     const attemptsKey = `login:attempts:${email}`;
     const lockKey = `login:lock:${email}`;
 
-    const current = await redis.get(attemptsKey);
-    const newCount = (current ?  Number.parseInt(current) : 0) + 1;
+    const windowSeconds = config.LOCK_TIME_MINUTES * 60;
+
+    // Atomic increment (prevents race conditions across concurrent attempts)
+    const newCount = await redis.incr(attemptsKey);
+
+    // Ensure TTL is set only on first attempt within the window
+    if (newCount === 1) {
+      await redis.expire(attemptsKey, windowSeconds);
+    }
 
     // Lock account if threshold is reached
     if (newCount >= config.MAX_LOGIN_ATTEMPTS) {
@@ -61,18 +68,11 @@ export class AuthService {
 
       await redis.setex(
         lockKey,
-        config.LOCK_TIME_MINUTES * 60,
+        windowSeconds,
         lockUntil.toString()
       );
 
       await redis.del(attemptsKey);
-    } else {
-      // Increment failed attempts with TTL
-      await redis.setex(
-        attemptsKey,
-        config.LOCK_TIME_MINUTES * 60,
-        newCount.toString()
-      );
     }
   }
 
@@ -100,7 +100,7 @@ export class AuthService {
     deviceInfo?: string
   ) {
     const accessToken = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
+      { id: user.id, email: user.email, role: user.role, type: 'access' },
       config.JWT_SECRET ,
       { expiresIn: config.ACCESS_TOKEN_EXPIRES_IN as any }
     );
@@ -244,7 +244,7 @@ export class AuthService {
       });
 
       throw new UnauthorizedError(
-        'Refresh token reuse detected – session compromised'
+        'Refresh token reuse detected - session compromised'
       );
     }
 

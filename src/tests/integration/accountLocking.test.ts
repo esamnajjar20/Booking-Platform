@@ -35,6 +35,13 @@ const store = new Map<string, string>();
 vi.mock('../../../src/config/redis', () => ({
   default: {
     get: vi.fn(async (key: string) => store.get(key) ?? null),
+    incr: vi.fn(async (key: string) => {
+      const current = Number.parseInt(store.get(key) ?? '0', 10);
+      const next = current + 1;
+      store.set(key, String(next));
+      return next;
+    }),
+    expire: vi.fn(async (_key: string, _ttl: number) => 1),
     setex: vi.fn(async (key: string, _ttl: number, value: string) => {
       store.set(key, value);
       return 'OK';

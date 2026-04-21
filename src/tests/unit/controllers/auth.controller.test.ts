@@ -6,8 +6,8 @@ const authServiceMock = vi.hoisted(() => ({
   refreshAccessToken: vi.fn()
 }));
 
-vi.mock('../../../../src/services/auth.service', () => ({
-  AuthService: vi.fn(() => authServiceMock)
+vi.mock('../../../../src/services/service.container', () => ({
+  authService: authServiceMock
 }));
 
 vi.mock('../../../../src/config/database', () => ({
@@ -140,8 +140,9 @@ describe('AuthController', () => {
         'new-refresh',
         expect.objectContaining({
           httpOnly: true,
-          secure: true,
-          sameSite: 'strict'
+          secure: false,
+          sameSite: 'strict',
+          maxAge: 7 * 24 * 60 * 60 * 1000
         })
       );
       expect(res.json).toHaveBeenCalledWith(

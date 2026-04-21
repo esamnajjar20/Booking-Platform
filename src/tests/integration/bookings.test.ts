@@ -58,8 +58,10 @@ describe('Integration: bookings endpoints', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (jwt.verify as any).mockImplementation((token: string) => {
-      if (token === 'admin-token') return { id: 'admin', email: 'a@a.com', role: 'ADMIN' };
-      return { id: 'u1', email: 'u@u.com', role: 'USER' };
+      if (token === 'admin-token') {
+        return { id: 'admin', email: 'a@a.com', role: 'ADMIN', type: 'access' };
+      }
+      return { id: 'u1', email: 'u@u.com', role: 'USER', type: 'access' };
     });
   });
 
@@ -123,6 +125,8 @@ describe('Integration: bookings endpoints', () => {
 
   it('POST /bookings creates booking', async () => {
     bookingServiceMock.create.mockResolvedValue({ id: 'b1' });
+    const startTime = new Date(Date.now() + 60 * 60 * 1000);
+    const endTime = new Date(startTime.getTime() + 60 * 60 * 1000);
 
     const app = makeApp();
     const res = await request(app)
@@ -130,8 +134,8 @@ describe('Integration: bookings endpoints', () => {
       .set('Authorization', 'Bearer user-token')
       .send({
         serviceId: '22222222-2222-2222-2222-222222222222',
-        startTime: '2026-01-01T10:00:00.000Z',
-        endTime: '2026-01-01T11:00:00.000Z'
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString()
       });
 
     expect(res.status).toBe(201);

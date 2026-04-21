@@ -9,6 +9,7 @@ export interface AuthRequest extends Request {
     id: string;
     email: string;
     role: string;
+    tokenType?: 'access';
   };
 }
 
@@ -47,7 +48,8 @@ export const authenticate = (
       !decoded ||
       !('id' in decoded) ||
       !('email' in decoded) ||
-      !('role' in decoded)
+      !('role' in decoded) ||
+      !('type' in decoded)
     ) {
       return next(new UnauthorizedError('Invalid token payload'));
     }
@@ -56,13 +58,19 @@ export const authenticate = (
       id: string;
       email: string;
       role: string;
+      type: unknown;
     };
+
+    if (payload.type !== 'access') {
+      return next(new UnauthorizedError('Invalid token type'));
+    }
 
     // 4. Attach validated user to request
     req.user = {
       id: payload.id,
       email: payload.email,
-      role: payload.role
+      role: payload.role,
+      tokenType: 'access'
     };
 
     next();

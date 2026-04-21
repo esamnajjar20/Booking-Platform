@@ -25,8 +25,8 @@ const { authServiceMock } = vi.hoisted(() => ({
   }
 }));
 
-vi.mock('../../../src/services/auth.service', () => ({
-  AuthService: vi.fn(() => authServiceMock)
+vi.mock('../../../src/services/service.container', () => ({
+  authService: authServiceMock
 }));
 
 vi.mock('../../../src/config/database', () => ({
@@ -54,7 +54,7 @@ const makeApp = () => {
 describe('Integration: auth endpoints', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (jwt.verify as any).mockReturnValue({ id: 'u1', email: 'a@a.com', role: 'USER' });
+    (jwt.verify as any).mockReturnValue({ id: 'u1', email: 'a@a.com', role: 'USER', type: 'access' });
   });
 
   it('POST /register validates body', async () => {

@@ -56,10 +56,10 @@ async function main() {
     });
   }
 
-  console.log("✅ Database seeded successfully!");
-  console.log(`👤 Admin: ${admin.email}`);
-  console.log(`👤 User: ${user.email}`);
-  console.log("🔑 Password for both: password123");
+  console.log(" Database seeded successfully!");
+  console.log(` Admin: ${admin.email}`);
+  console.log(`User: ${user.email}`);
+  console.log(" Password for both: password123");
 }
 
 main()
@@ -68,6 +68,5 @@ main()
     process.exit(1);
   })
   .finally(async () => {
-    // لا نطبع أي شيء هنا، فقط disconnect
     await prisma.$disconnect();
   });

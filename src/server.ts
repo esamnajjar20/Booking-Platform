@@ -24,6 +24,11 @@ const app = express();
 
 const isProd = process.env.NODE_ENV === 'production';
 
+// Trust reverse proxy headers only when explicitly configured (prevents spoofing X-Forwarded-*)
+if (config.TRUST_PROXY !== false) {
+  app.set('trust proxy', config.TRUST_PROXY);
+}
+
 /**
  * Security layer (HTTP headers protection)
  * Includes CSP, HSTS, and basic hardening via Helmet
@@ -104,7 +109,24 @@ app.use('/api-docs', docsRoutes);
  */
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
-app.get('/health/db', async (req, res) => {
+const protectHealthDetails: express.RequestHandler = (req, res, next) => {
+  // Keep detailed checks private in production (DB/Redis info is sensitive)
+  if (!isProd) return next();
+
+  const token = req.header('x-health-token');
+  if (config.HEALTHCHECK_TOKEN && token === config.HEALTHCHECK_TOKEN) {
+    return next();
+  }
+
+  const ip = req.ip;
+  if (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1') {
+    return next();
+  }
+
+  return res.status(401).json({ status: 'error', error: 'Unauthorized' });
+};
+
+app.get('/health/db', protectHealthDetails, async (req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
     res.json({ status: 'ok', database: 'connected' });
@@ -113,7 +135,7 @@ app.get('/health/db', async (req, res) => {
   }
 });
 
-app.get('/health/redis', async (req, res) => {
+app.get('/health/redis', protectHealthDetails, async (req, res) => {
   try {
     await redis.ping();
     res.json({ status: 'ok', redis: 'connected' });

@@ -7,8 +7,8 @@ const serviceServiceMock = vi.hoisted(() => ({
   delete: vi.fn()
 }));
 
-vi.mock('../../../../src/services/service.service', () => ({
-  ServiceService: vi.fn(() => serviceServiceMock)
+vi.mock('../../../../src/services/service.container', () => ({
+  serviceService: serviceServiceMock
 }));
 
 vi.mock('../../../../src/config/database', () => ({

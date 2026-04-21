@@ -52,15 +52,31 @@ export const createBookingSchema = z.object({
   serviceId: z.string().uuid(),
   startTime: z.string().datetime(),
   endTime: z.string().datetime()
-}).refine(data => {
+}).superRefine((data, ctx) => {
   const start = new Date(data.startTime);
   const end = new Date(data.endTime);
 
-  return !Number.isNaN(start.getTime()) &&
-         !Number.isNaN(end.getTime()) &&
-         end > start;
-}, {
-  message: 'Invalid time range (endTime must be after startTime)'
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Invalid date/time format'
+    });
+    return;
+  }
+
+  if (start < new Date()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'startTime cannot be in the past'
+    });
+  }
+
+  if (end <= start) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Invalid time range (endTime must be after startTime)'
+    });
+  }
 });
 
 

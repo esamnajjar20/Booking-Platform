@@ -4,13 +4,11 @@
  * Uses ResponseWrapper for standardized API responses.
  */
 import { Request, Response, NextFunction } from 'express';
-import { ServiceService } from '../services/service.service';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { ResponseWrapper } from '../utils/response';
 import { getPagination } from '../utils/pagination';
 import prisma from '../config/database';
-
-const serviceService = new ServiceService();
+import { serviceService } from '../services/service.container';
 
 export class ServiceController {
   /**
