@@ -5,6 +5,7 @@ vi.mock('../../../../src/config/database', () => ({
   default: {
     service: {
       findMany: vi.fn(),
+      count: vi.fn(),
       findFirst: vi.fn(),
       findUnique: vi.fn(),
       create: vi.fn(),
@@ -33,10 +34,43 @@ describe('ServiceService', () => {
   });
 
   describe('getAll', () => {
+    it('returns paginated services with computed filters', async () => {
+      (prisma.service.findMany as any).mockResolvedValue([{ id: '1' }]);
+      (prisma.service.count as any).mockResolvedValue(1);
+
+      const result = await service.getAll({
+        skip: 10,
+        take: 10,
+        sortBy: 'price',
+        order: 'asc',
+        search: 'hair',
+        minPrice: 5,
+        maxPrice: 20
+      });
+
+      expect(result).toEqual({ services: [{ id: '1' }], total: 1 });
+      expect(prisma.service.findMany).toHaveBeenCalledWith({
+        where: {
+          isAvailable: true,
+          deletedAt: null,
+          OR: [
+            { name: { contains: 'hair', mode: 'insensitive' } },
+            { description: { contains: 'hair', mode: 'insensitive' } }
+          ],
+          price: { gte: 5, lte: 20 }
+        },
+        orderBy: { price: 'asc' },
+        skip: 10,
+        take: 10
+      });
+    });
+  });
+
+  describe('getAllCached', () => {
     it('uses cache key services:all with TTL 3600', async () => {
       (prisma.service.findMany as any).mockResolvedValue([{ id: '1' }]);
 
-      const result = await service.getAll();
+      const result = await service.getAllCached();
 
       expect(cacheService.getOrSet).toHaveBeenCalledWith(
         'services:all',

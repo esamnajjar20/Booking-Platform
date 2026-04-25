@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AuthService } from '../../../../src/services/auth.service';
-import { Response } from 'express';
 
 vi.mock('bcrypt', () => ({
   default: {
@@ -38,6 +37,7 @@ vi.mock('../../../../src/config/database', () => ({
     },
     refreshToken: {
       create: vi.fn(),
+      findUnique: vi.fn(),
       findFirst: vi.fn(),
       findMany: vi.fn(),
       update: vi.fn(),
@@ -53,17 +53,11 @@ import prisma from '../../../../src/config/database';
 
 describe('AuthService - refresh + logout + edge cases', () => {
   let service: AuthService;
-  let res: Response;
 
   beforeEach(() => {
     vi.clearAllMocks();
 
     service = new AuthService();
-
-    res = {
-      cookie: vi.fn(),
-      clearCookie: vi.fn()
-    } as any;
 
     (bcrypt.hash as any).mockResolvedValue('hashed');
     (bcrypt.compare as any).mockResolvedValue(true);
@@ -75,15 +69,15 @@ describe('AuthService - refresh + logout + edge cases', () => {
 
   describe('refresh token', () => {
     it('refresh success', async () => {
-      (prisma.refreshToken.findFirst as any).mockResolvedValue({
+      (prisma.refreshToken.findUnique as any).mockResolvedValue({
         id: '1',
         token: 't',
         familyId: 'f',
         revokedAt: null,
+        expiresAt: new Date(Date.now() + 60_000),
         user: { id: '1', email: 'x', role: 'USER' }
       });
 
-      (prisma.refreshToken.findMany as any).mockResolvedValue([]);
       (prisma.refreshToken.update as any).mockResolvedValue({});
       (prisma.refreshToken.create as any).mockResolvedValue({
         token: 'new'
@@ -95,7 +89,7 @@ describe('AuthService - refresh + logout + edge cases', () => {
     });
 
     it('invalid refresh token', async () => {
-      (prisma.refreshToken.findFirst as any).mockResolvedValue(null);
+      (prisma.refreshToken.findUnique as any).mockResolvedValue(null);
 
       await expect(service.refreshAccessToken('bad')).rejects.toThrow(
         'Invalid refresh token'
@@ -103,26 +97,46 @@ describe('AuthService - refresh + logout + edge cases', () => {
     });
 
     it('reuse attack detection', async () => {
-      (prisma.refreshToken.findFirst as any).mockResolvedValue({
+      (prisma.refreshToken.findUnique as any).mockResolvedValue({
         id: '1',
         token: 't',
         familyId: 'f',
-        revokedAt: null,
+        revokedAt: new Date(),
+        expiresAt: new Date(Date.now() + 60_000),
         user: { id: '1', email: 'x', role: 'USER' }
       });
-
-      (prisma.refreshToken.findMany as any).mockResolvedValue([
-        { revokedAt: new Date() }
-      ]);
 
       (prisma.refreshToken.updateMany as any).mockResolvedValue({});
 
       await expect(service.refreshAccessToken('t')).rejects.toThrow(/reuse/i);
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { familyId: 'f' },
+        data: { revokedAt: expect.any(Date) }
+      });
+    });
+
+    it('expired refresh token is rejected', async () => {
+      (prisma.refreshToken.findUnique as any).mockResolvedValue({
+        id: '1',
+        token: 't',
+        familyId: 'f',
+        revokedAt: null,
+        expiresAt: new Date(Date.now() - 60_000),
+        user: { id: '1', email: 'x', role: 'USER' }
+      });
+
+      await expect(service.refreshAccessToken('t')).rejects.toThrow('Expired refresh token');
+      expect(prisma.refreshToken.update).not.toHaveBeenCalled();
     });
   });
 
   describe('logout', () => {
     it('revokes token', async () => {
+      (prisma.refreshToken.findFirst as any).mockResolvedValue({
+        token: 'token',
+        familyId: 'f',
+        userId: 'u1'
+      });
       (prisma.refreshToken.updateMany as any).mockResolvedValue({ count: 1 });
 
       await service.logout('token');
@@ -131,6 +145,7 @@ describe('AuthService - refresh + logout + edge cases', () => {
     });
 
     it('handles empty token safely', async () => {
+      (prisma.refreshToken.findFirst as any).mockResolvedValue(null);
       await service.logout('');
 
       expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
@@ -148,7 +163,7 @@ describe('AuthService - refresh + logout + edge cases', () => {
         role: 'USER'
       });
 
-      await expect(service.login('x', '123', res)).rejects.toThrow();
+      await expect(service.login('x', '123')).rejects.toThrow();
     });
 
     it('does not crash on malformed user object', async () => {
@@ -164,7 +179,7 @@ describe('AuthService - refresh + logout + edge cases', () => {
         }
       );
 
-      await expect(service.login('x', '123', res)).rejects.toThrow();
+      await expect(service.login('x', '123')).rejects.toThrow();
     });
   });
 });

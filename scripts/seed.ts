@@ -1,11 +1,11 @@
 // scripts/seed.ts
 import "dotenv/config";
-import prisma from "../src/config/database";   // تأكد من المسار الصحيح
+import prisma from "../src/config/database"; 
 import bcrypt from "bcrypt";
 import { addDays } from "date-fns";
 
 async function main() {
-  console.log("🌱 Starting database seeding...");
+  console.log(" Starting database seeding...");
 
   const hashedPassword = await bcrypt.hash("password123", 10);
 
@@ -64,7 +64,7 @@ async function main() {
 
 main()
   .catch((e) => {
-    console.error("❌ Seeding failed:", e);
+    console.error(" Seeding failed:", e);
     process.exit(1);
   })
   .finally(async () => {

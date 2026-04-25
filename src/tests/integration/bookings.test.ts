@@ -17,17 +17,9 @@ vi.mock('jsonwebtoken', () => ({
   verify: vi.fn()
 }));
 
-vi.mock('../../../src/config/database', () => ({
-  default: {
-    booking: {
-      findMany: vi.fn(),
-      count: vi.fn()
-    }
-  }
-}));
-
 const { bookingServiceMock } = vi.hoisted(() => ({
   bookingServiceMock: {
+    getUserBookings: vi.fn(),
     getById: vi.fn(),
     create: vi.fn(),
     cancel: vi.fn(),
@@ -35,14 +27,13 @@ const { bookingServiceMock } = vi.hoisted(() => ({
   }
 }));
 
-vi.mock('../../../src/services/booking.service', () => ({
-  BookingService: vi.fn(() => bookingServiceMock)
+vi.mock('../../../src/services/service.container', () => ({
+  bookingService: bookingServiceMock
 }));
 
 import jwt from 'jsonwebtoken';
 import bookingsRoutes from '../../../src/routes/v1/bookings.routes';
 import { errorHandler } from '../../../src/middleware/error.middleware';
-import prisma from '../../../src/config/database';
 import { ConflictError, NotFoundError } from '../../../src/utils/errors';
 
 const makeApp = () => {
@@ -74,8 +65,7 @@ describe('Integration: bookings endpoints', () => {
   });
 
   it('GET /bookings returns paginated list', async () => {
-    (prisma.booking.findMany as any).mockResolvedValue([{ id: 'b1' }]);
-    (prisma.booking.count as any).mockResolvedValue(1);
+    bookingServiceMock.getUserBookings.mockResolvedValue({ bookings: [{ id: 'b1' }], total: 1 });
 
     const app = makeApp();
     const res = await request(app)
@@ -86,6 +76,7 @@ describe('Integration: bookings endpoints', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.data.items).toEqual([{ id: 'b1' }]);
     expect(res.body.data.pagination.total).toBe(1);
+    expect(bookingServiceMock.getUserBookings).toHaveBeenCalledWith('u1', 0, 10);
   });
 
   it('GET /bookings/:id returns booking', async () => {
@@ -141,6 +132,13 @@ describe('Integration: bookings endpoints', () => {
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
     expect(res.body.data.id).toBe('b1');
+    expect(bookingServiceMock.create).toHaveBeenCalledWith(
+      'u1',
+      '22222222-2222-2222-2222-222222222222',
+      expect.any(Date),
+      expect.any(Date),
+      expect.any(Object)
+    );
   });
 
   it('PATCH /bookings/:id/cancel cancels booking', async () => {
@@ -204,5 +202,17 @@ describe('Integration: bookings endpoints', () => {
     expect(res.status).toBe(409);
     expect(res.body.success).toBe(false);
     expect(res.body.error).toMatch(/only pending bookings can be confirmed/i);
+  });
+
+  it('PATCH /bookings/:id/cancel returns 404 when booking does not exist', async () => {
+    bookingServiceMock.cancel.mockRejectedValue(new NotFoundError('Booking'));
+
+    const app = makeApp();
+    const res = await request(app)
+      .patch('/api/v1/bookings/11111111-1111-1111-1111-111111111111/cancel')
+      .set('Authorization', 'Bearer user-token');
+
+    expect(res.status).toBe(404);
+    expect(res.body.success).toBe(false);
   });
 });

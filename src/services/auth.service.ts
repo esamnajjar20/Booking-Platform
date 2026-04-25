@@ -18,13 +18,11 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config/env';
 import { ConflictError, UnauthorizedError } from '../utils/errors';
 import logger from '../utils/logger';
-import { Response } from 'express';
 import redis from '../config/redis';
-import { v4 as uuidv4} from 'uuid';
+import { v4 as uuidv4 } from 'uuid';
 import { addDays } from 'date-fns';
 
 export class AuthService {
-
   //  BRUTE FORCE PROTECTION (ACCOUNT SECURITY)
 
   /**
@@ -39,8 +37,8 @@ export class AuthService {
     const lockedUntil = await redis.get(lockKey);
 
     return {
-      attempts: attempts ?  Number.parseInt(attempts) : 0,
-      lockedUntil: lockedUntil ? new Date( Number.parseInt(lockedUntil)) : null
+      attempts: attempts ? Number.parseInt(attempts) : 0,
+      lockedUntil: lockedUntil ? new Date(Number.parseInt(lockedUntil)) : null
     };
   }
 
@@ -66,11 +64,7 @@ export class AuthService {
     if (newCount >= config.MAX_LOGIN_ATTEMPTS) {
       const lockUntil = Date.now() + config.LOCK_TIME_MINUTES * 60 * 1000;
 
-      await redis.setex(
-        lockKey,
-        windowSeconds,
-        lockUntil.toString()
-      );
+      await redis.setex(lockKey, windowSeconds, lockUntil.toString());
 
       await redis.del(attemptsKey);
     }
@@ -101,7 +95,7 @@ export class AuthService {
   ) {
     const accessToken = jwt.sign(
       { id: user.id, email: user.email, role: user.role, type: 'access' },
-      config.JWT_SECRET ,
+      config.JWT_SECRET,
       { expiresIn: config.ACCESS_TOKEN_EXPIRES_IN as any }
     );
 
@@ -138,18 +132,14 @@ export class AuthService {
       throw new ConflictError('Email already exists');
     }
 
-    const hashedPassword = await bcrypt.hash(
-      password,
-      config.BCRYPT_ROUNDS || 10
-    );
+    const hashedPassword = await bcrypt.hash(password, config.BCRYPT_ROUNDS || 10);
 
     const user = await prisma.user.create({
       data: { email, password: hashedPassword, name },
       select: { id: true, email: true, name: true, role: true }
     });
 
-    const { accessToken, refreshToken } =
-      await this.generateTokens(user);
+    const { accessToken, refreshToken } = await this.generateTokens(user);
 
     logger.info(`User registered: ${email}`);
 
@@ -163,42 +153,32 @@ export class AuthService {
    * - Handles failed login attempts
    * - Issues JWT and refresh token cookie
    */
-  async login(
-    email: string,
-    password: string,
-    res: Response,
-    deviceInfo?: string
-  ) {
+  async login(email: string, password: string, deviceInfo?: string) {
     const { lockedUntil } = await this.getFailedAttempts(email);
 
     if (lockedUntil && lockedUntil > new Date()) {
-      const minutesLeft = Math.ceil(
-        (lockedUntil.getTime() - Date.now()) / 60000
-      );
+      const minutesLeft = Math.ceil((lockedUntil.getTime() - Date.now()) / 60000);
 
-      throw new UnauthorizedError(
-        `Account locked. Try again in ${minutesLeft} minutes.`
-      );
+      throw new UnauthorizedError(`Account locked. Try again in ${minutesLeft} minutes.`);
     }
 
     const user = await prisma.user.findUnique({ where: { email } });
 
-    if (!user || !(await bcrypt.compare(password, user.password))) {
+    let isPasswordValid = false;
+    if (user) {
+      isPasswordValid = await bcrypt.compare(password, user.password);
+    } else {
+      await bcrypt.compare(password, '$2b$10$dummyhashvalueforTimingProtection');
+    }
+
+    if (!user || !isPasswordValid) {
       await this.recordFailedAttempt(email);
       throw new UnauthorizedError('Invalid credentials');
     }
 
     await this.clearFailedAttempts(email);
 
-    const { accessToken, refreshToken } =
-      await this.generateTokens(user, undefined, deviceInfo);
-
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: config.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000
-    });
+    const { accessToken, refreshToken } = await this.generateTokens(user, undefined, deviceInfo);
 
     logger.info(`User logged in: ${email}`);
 
@@ -209,67 +189,69 @@ export class AuthService {
         name: user.name,
         role: user.role
       },
-      accessToken
+      accessToken,
+      refreshToken
     };
   }
-
-  /**
-   * Refreshes access token using a valid refresh token.
-   * - Validates token existence
-   * - Detects token reuse (security feature)
-   * - Rotates refresh token
-   */
+  
   async refreshAccessToken(refreshToken: string) {
-    const stored = await prisma.refreshToken.findFirst({
-      where: {
-        token: refreshToken,
-        revokedAt: null,
-        expiresAt: { gt: new Date() }
-      },
-      include: { user: true }
-    });
+  const stored = await prisma.refreshToken.findUnique({
+    where: { token: refreshToken },
+    include: { user: true }
+  });
 
-    if (!stored) {
-      throw new UnauthorizedError('Invalid refresh token');
-    }
+  if (!stored) {
+    throw new UnauthorizedError('Invalid refresh token');
+  }
 
-    const familyTokens = await prisma.refreshToken.findMany({
-      where: { familyId: stored.familyId }
-    });
+  if (stored.expiresAt < new Date()) {
+    throw new UnauthorizedError('Expired refresh token');
+  }
 
-    if (familyTokens.some(t => t.revokedAt !== null)) {
-      await prisma.refreshToken.updateMany({
-        where: { familyId: stored.familyId },
-        data: { revokedAt: new Date() }
-      });
-
-      throw new UnauthorizedError(
-        'Refresh token reuse detected - session compromised'
-      );
-    }
-
-    await prisma.refreshToken.update({
-      where: { id: stored.id },
+  // reuse detection (ONLY if token was already revoked)
+  if (stored.revokedAt) {
+    await prisma.refreshToken.updateMany({
+      where: { familyId: stored.familyId },
       data: { revokedAt: new Date() }
     });
 
-    const {
-      accessToken,
-      refreshToken: newRefreshToken
-    } = await this.generateTokens(stored.user, stored.familyId);
-
-    return { accessToken, refreshToken: newRefreshToken };
+    throw new UnauthorizedError('Refresh token reuse detected - session compromised');
   }
 
+  // rotate token
+  await prisma.refreshToken.update({
+    where: { id: stored.id },
+    data: { revokedAt: new Date() }
+  });
+
+  const { accessToken, refreshToken: newRefreshToken } =
+    await this.generateTokens(stored.user, stored.familyId);
+
+  return { accessToken, refreshToken: newRefreshToken };
+}
   /**
    * Logs out the user by revoking refresh token.
    */
   async logout(refreshToken: string) {
-    if (refreshToken) {
-      await prisma.refreshToken.updateMany({
-        where: { token: refreshToken },
-        data: { revokedAt: new Date() }
-      });
-    }
+    const stored = await prisma.refreshToken.findFirst({
+      where: {
+        token: refreshToken,
+        revokedAt: null
+      }
+    });
+
+    if (!stored) return;
+
+    //  revoke entire session family
+    await prisma.refreshToken.updateMany({
+      where: {
+        familyId: stored.familyId
+      },
+      data: {
+        revokedAt: new Date()
+      }
+    });
+
+    logger.info(`Logout: entire session revoked for user ${stored.userId}`);
   }
 }

@@ -24,6 +24,7 @@ vi.mock('../../../../src/config/database', () => ({
   default: {
     booking: {
       findMany: vi.fn(),
+      count: vi.fn(),
       findFirst: vi.fn(),
       update: vi.fn(),
       create: vi.fn()
@@ -47,22 +48,21 @@ describe('BookingService', () => {
   });
 
   describe('getUserBookings', () => {
-    it('returns bookings using a per-user cache key', async () => {
+    it('returns bookings and total count without cache coupling', async () => {
       (prisma.booking.findMany as any).mockResolvedValue([{ id: 'b1' }]);
+      (prisma.booking.count as any).mockResolvedValue(1);
 
       const result = await service.getUserBookings('u1');
 
-      expect(cacheService.getOrSet).toHaveBeenCalledWith(
-        'user:u1:bookings',
-        expect.any(Function),
-        1800
-      );
       expect(prisma.booking.findMany).toHaveBeenCalledWith({
         where: { userId: 'u1', deletedAt: null },
         include: { service: true },
         orderBy: { startTime: 'desc' }
       });
-      expect(result).toEqual([{ id: 'b1' }]);
+      expect(prisma.booking.count).toHaveBeenCalledWith({
+        where: { userId: 'u1', deletedAt: null }
+      });
+      expect(result).toEqual({ bookings: [{ id: 'b1' }], total: 1 });
     });
   });
 

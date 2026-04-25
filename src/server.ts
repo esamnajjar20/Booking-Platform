@@ -41,18 +41,14 @@ app.use(
         styleSrc: ["'self'", "'unsafe-inline'"],
 
         // Relaxed in dev, strict in production
-        scriptSrc: isProd
-          ? ["'self'"]
-          : ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+        scriptSrc: isProd ? ["'self'"] : ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
 
-        imgSrc: ["'self'", "data:", "https:"]
+        imgSrc: ["'self'", 'data:', 'https:']
       }
     },
 
     // Enable HSTS only in production environments
-    hsts: isProd
-      ? { maxAge: 31536000, includeSubDomains: true, preload: true }
-      : false
+    hsts: isProd ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false
   })
 );
 
@@ -60,10 +56,12 @@ app.use(
  * Global middleware stack
  * Handles CORS, compression, parsing, and request tracing
  */
-app.use(cors({
-  origin: config.ALLOWED_ORIGINS.split(','),
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: config.ALLOWED_ORIGINS.split(','),
+    credentials: true
+  })
+);
 
 app.use(compression());
 app.use(express.json({ limit: config.BODY_LIMIT }));
@@ -73,24 +71,20 @@ app.use(cookieParser());
 // Correlation ID for request tracing across logs/services
 app.use(correlationIdMiddleware);
 
-// HTTP request logging (useful for debugging and security monitoring)
-app.use(morgan('combined', { stream }));
-
 /**
  * Rate limiting applied only to API routes
  * Avoids affecting health checks, static files, and docs
  */
 app.use('/api/v1', generalLimiter);
 
+// HTTP request logging (useful for debugging and security monitoring)
+app.use(morgan('combined', { stream }));
+
 /**
  * Static file serving (uploads)
  * Protected via authentication middleware
  */
-app.use(
-  '/uploads',
-  protectUploads,
-  express.static(path.join(__dirname, '../uploads'))
-);
+app.use('/uploads', protectUploads, express.static(path.join(__dirname, '../uploads')));
 
 /**
  * API routes
@@ -156,9 +150,7 @@ app.get('/ready', (req, res) => {
  * 404 handler
  * Handles unknown routes
  */
-app.use((req, res) =>
-  res.status(404).json({ error: `Cannot ${req.method} ${req.url}` })
-);
+app.use((req, res) => res.status(404).json({ error: `Cannot ${req.method} ${req.url}` }));
 
 /**
  * Global error handler
@@ -173,7 +165,12 @@ const PORT = config.PORT;
 
 const server = app.listen(PORT, () => {
   logger.info(` Server running on http://localhost:${PORT}`);
-  startReminderJob();
+  try {
+    startReminderJob();
+    logger.info(' Reminder job started');
+  } catch (err) {
+    logger.error(' Failed to start reminder job', err);
+  }
 });
 
 /**
@@ -184,20 +181,38 @@ const gracefulShutdown = async (signal: string) => {
   logger.info(`${signal} received. Starting graceful shutdown...`);
 
   server.close(async () => {
-    await prisma.$disconnect();
-    await redis.quit();
-    logger.info('Graceful shutdown completed');
-    process.exit(0);
+    try {
+      await prisma.$disconnect();
+      await redis.quit();
+      logger.info('Graceful shutdown completed');
+      process.exit(0);
+    } catch (err) {
+      logger.error(' Error during shutdown', err);
+      process.exit(1);
+    }
   });
 
   // Force shutdown fallback (prevents hanging process)
   setTimeout(() => {
     logger.error('Forced shutdown triggered');
     process.exit(1);
-  }, 10000);
+  }, 10000).unref();
 };
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+/**
+ * Handle unexpected errors (important for production stability)
+ */
+process.on('uncaughtException', (err) => {
+  logger.error(' Uncaught Exception', err);
+  gracefulShutdown('uncaughtException');
+});
+
+process.on('unhandledRejection', (reason) => {
+  logger.error(' Unhandled Rejection', reason);
+  gracefulShutdown('unhandledRejection');
+});
 
 export default app;

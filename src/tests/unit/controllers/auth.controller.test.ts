@@ -3,23 +3,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const authServiceMock = vi.hoisted(() => ({
   register: vi.fn(),
   login: vi.fn(),
-  refreshAccessToken: vi.fn()
+  refreshAccessToken: vi.fn(),
+  logout: vi.fn()
 }));
 
 vi.mock('../../../../src/services/service.container', () => ({
   authService: authServiceMock
 }));
 
-vi.mock('../../../../src/config/database', () => ({
-  default: {
-    refreshToken: {
-      updateMany: vi.fn()
-    }
-  }
-}));
-
 import { AuthController } from '../../../../src/controllers/auth.controller';
-import prisma from '../../../../src/config/database';
 
 describe('AuthController', () => {
   let controller: AuthController;
@@ -81,7 +73,8 @@ describe('AuthController', () => {
     it('returns 200 with service result', async () => {
       authServiceMock.login.mockResolvedValue({
         user: { id: '1' },
-        accessToken: 'a'
+        accessToken: 'a',
+        refreshToken: 'r'
       });
 
       const req: any = { body: { email: 'a@a.com', password: 'pw' } };
@@ -90,7 +83,7 @@ describe('AuthController', () => {
 
       await controller.login(req, res, next);
 
-      expect(authServiceMock.login).toHaveBeenCalledWith('a@a.com', 'pw', res);
+      expect(authServiceMock.login).toHaveBeenCalledWith('a@a.com', 'pw');
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -110,16 +103,8 @@ describe('AuthController', () => {
 
       await controller.refresh(req, res, next);
 
-      expect(res.status).toHaveBeenCalledWith(401);
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          success: false,
-          error: 'No refresh token',
-          code: 'NO_REFRESH_TOKEN'
-        })
-      );
+      expect(next).toHaveBeenCalledWith(expect.objectContaining({ message: 'Missing refresh token' }));
       expect(authServiceMock.refreshAccessToken).not.toHaveBeenCalled();
-      expect(next).not.toHaveBeenCalled();
     });
 
     it('sets new refresh cookie and returns access token', async () => {
@@ -158,7 +143,7 @@ describe('AuthController', () => {
 
   describe('logout', () => {
     it('revokes refresh token when cookie exists and clears cookie', async () => {
-      (prisma.refreshToken.updateMany as any).mockResolvedValue({ count: 1 });
+      authServiceMock.logout.mockResolvedValue(undefined);
 
       const req: any = { cookies: { refreshToken: 'r1' } };
       const res = makeRes();
@@ -166,11 +151,15 @@ describe('AuthController', () => {
 
       await controller.logout(req, res, next);
 
-      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
-        where: { token: 'r1' },
-        data: { revokedAt: expect.any(Date) }
-      });
-      expect(res.clearCookie).toHaveBeenCalledWith('refreshToken');
+      expect(authServiceMock.logout).toHaveBeenCalledWith('r1');
+      expect(res.clearCookie).toHaveBeenCalledWith(
+        'refreshToken',
+        expect.objectContaining({
+          httpOnly: true,
+          sameSite: 'strict',
+          path: '/'
+        })
+      );
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           success: true,
@@ -187,8 +176,15 @@ describe('AuthController', () => {
 
       await controller.logout(req, res, next);
 
-      expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
-      expect(res.clearCookie).toHaveBeenCalledWith('refreshToken');
+      expect(authServiceMock.logout).not.toHaveBeenCalled();
+      expect(res.clearCookie).toHaveBeenCalledWith(
+        'refreshToken',
+        expect.objectContaining({
+          httpOnly: true,
+          sameSite: 'strict',
+          path: '/'
+        })
+      );
       expect(next).not.toHaveBeenCalled();
     });
   });

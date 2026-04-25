@@ -31,9 +31,9 @@ router.get('/:id', apiLimiter, validateParams(idParamSchema), ctrl.getById);
 
 router.post(
   '/',
-  apiLimiter,
   authenticate,
   authorize('ADMIN'),
+  apiLimiter,
   validateBody(createServiceSchema),
   upload.single('image'),
   ctrl.create
@@ -41,9 +41,9 @@ router.post(
 
 router.put(
   '/:id',
-  apiLimiter,
   authenticate,
   authorize('ADMIN'),
+  apiLimiter,
   validateParams(idParamSchema),
   validateBody(updateServiceSchema),
   upload.single('image'),
@@ -52,9 +52,9 @@ router.put(
 
 router.delete(
   '/:id',
-  apiLimiter,
   authenticate,
   authorize('ADMIN'),
+  apiLimiter,
   validateParams(idParamSchema),
   ctrl.delete
 );

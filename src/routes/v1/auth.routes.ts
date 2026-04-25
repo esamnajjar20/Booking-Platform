@@ -22,8 +22,8 @@ router.post('/register', authLimiter, validateBody(registerSchema), ctrl.registe
 
 router.post('/login', authLimiter, validateBody(loginSchema), ctrl.login);
 
-router.post('/refresh',authenticate,authLimiter, ctrl.refresh);
+router.post('/refresh', authLimiter, ctrl.refresh);
 
-router.post('/logout', authenticate,authLimiter, ctrl.logout);
+router.post('/logout',authLimiter, authenticate, ctrl.logout);
 
 export default router;

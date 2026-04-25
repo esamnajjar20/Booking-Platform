@@ -50,9 +50,10 @@ router.patch(
  */
 router.patch(
   '/:id/confirm',
+  authorize('ADMIN'),
   bookingLimiter,
   validateParams(idParamSchema),
-  authorize('ADMIN'),
+  
   ctrl.confirm
 );
 

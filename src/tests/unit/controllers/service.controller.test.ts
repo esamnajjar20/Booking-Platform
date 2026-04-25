@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const serviceServiceMock = vi.hoisted(() => ({
+  getAll: vi.fn(),
   getById: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
@@ -11,16 +12,6 @@ vi.mock('../../../../src/services/service.container', () => ({
   serviceService: serviceServiceMock
 }));
 
-vi.mock('../../../../src/config/database', () => ({
-  default: {
-    service: {
-      findMany: vi.fn(),
-      count: vi.fn()
-    }
-  }
-}));
-
-import prisma from '../../../../src/config/database';
 import { ServiceController } from '../../../../src/controllers/service.controller';
 
 describe('ServiceController', () => {
@@ -39,8 +30,7 @@ describe('ServiceController', () => {
   });
 
   it('getAll returns paginated services with filters and sorting', async () => {
-    (prisma.service.findMany as any).mockResolvedValue([{ id: 's1' }]);
-    (prisma.service.count as any).mockResolvedValue(1);
+    serviceServiceMock.getAll.mockResolvedValue({ services: [{ id: 's1' }], total: 1 });
 
     const req: any = {
       query: {
@@ -58,19 +48,14 @@ describe('ServiceController', () => {
 
     await controller.getAll(req, res, next);
 
-    expect(prisma.service.findMany).toHaveBeenCalledWith({
-      where: {
-        isAvailable: true,
-        deletedAt: null,
-        OR: [
-          { name: { contains: 'hair', mode: 'insensitive' } },
-          { description: { contains: 'hair', mode: 'insensitive' } }
-        ],
-        price: { gte: 5, lte: 20 }
-      },
-      orderBy: { price: 'asc' },
+    expect(serviceServiceMock.getAll).toHaveBeenCalledWith({
       skip: 10,
-      take: 10
+      take: 10,
+      sortBy: 'price',
+      order: 'asc',
+      search: 'hair',
+      minPrice: 5,
+      maxPrice: 20
     });
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith(
@@ -137,7 +122,7 @@ describe('ServiceController', () => {
 
   it('forwards errors to next', async () => {
     const err = new Error('boom');
-    (prisma.service.findMany as any).mockRejectedValue(err);
+    serviceServiceMock.getAll.mockRejectedValue(err);
 
     const req: any = { query: {} };
     const res = makeRes();

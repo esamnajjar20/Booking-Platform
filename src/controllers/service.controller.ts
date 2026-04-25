@@ -7,51 +7,43 @@ import { Request, Response, NextFunction } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { ResponseWrapper } from '../utils/response';
 import { getPagination } from '../utils/pagination';
-import prisma from '../config/database';
 import { serviceService } from '../services/service.container';
 
 export class ServiceController {
   /**
    * GET /api/v1/services
-   * Get all available services with filtering, sorting, and pagination.
+   * Retrieve paginated list of available services with filtering options
    */
   async getAll(req: Request, res: Response, next: NextFunction) {
     try {
+      // Extract pagination and filter parameters from query string
       const { page, limit, skip, sortBy, order, search, minPrice, maxPrice } = getPagination(req.query);
 
-      const where: any = { isAvailable: true, deletedAt: null };
+      // Delegate filtering and data fetching to service layer
+      const { services, total } = await serviceService.getAll({
+        skip,
+        take: limit,
+        sortBy,
+        order: order as 'asc' | 'desc',
+        search,
+        minPrice,
+        maxPrice
+      });
 
-      if (search) {
-        where.OR = [
-          { name: { contains: search, mode: 'insensitive' } },
-          { description: { contains: search, mode: 'insensitive' } }
-        ];
-      }
-      if (minPrice !== undefined) where.price = { ...where.price, gte: minPrice };
-      if (maxPrice !== undefined) where.price = { ...where.price, lte: maxPrice };
-
-      let orderBy: any = { createdAt: 'desc' };
-      if (sortBy && ['name', 'price', 'duration', 'createdAt'].includes(sortBy)) {
-        orderBy = { [sortBy]: order === 'asc' ? 'asc' : 'desc' };
-      }
-
-      const [services, total] = await Promise.all([
-        prisma.service.findMany({ where, orderBy, skip, take: limit }),
-        prisma.service.count({ where })
-      ]);
-
+      // Return standardized paginated response
       ResponseWrapper.paginated(res, services, total, page, limit);
     } catch (error) {
-      next(error);
+      next(error); // Pass to global error handler
     }
   }
 
   /**
    * GET /api/v1/services/:id
-   * Get a single service by ID.
+   * Retrieve a single service by ID
    */
   async getById(req: Request, res: Response, next: NextFunction) {
     try {
+      // Service layer handles caching and validation
       const service = await serviceService.getById(req.params.id);
       ResponseWrapper.success(res, service);
     } catch (error) {
@@ -61,14 +53,26 @@ export class ServiceController {
 
   /**
    * POST /api/v1/services
-   * Create a new service (Admin only).
-   * Handles image upload via multer.
+   * Create a new service (Admin only)
+   * Handles image upload via multer middleware
    */
   async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { name, description, price, duration } = req.body;
-      const imagePath = (req.file as any)?.path;
-      const service = await serviceService.create({ name, description, price: Number(price), duration: Number(duration) }, imagePath);
+      const imagePath = (req.file as any)?.path; // Extract uploaded file path
+
+      // Delegate creation logic to service layer
+      const service = await serviceService.create(
+        { 
+          name, 
+          description, 
+          price: Number(price), 
+          duration: Number(duration) 
+        }, 
+        imagePath
+      );
+
+      // Return 201 Created for successful resource creation
       ResponseWrapper.success(res, service, 'Service created', 201);
     } catch (error) {
       next(error);
@@ -77,12 +81,15 @@ export class ServiceController {
 
   /**
    * PUT /api/v1/services/:id
-   * Update a service (Admin only).
+   * Update an existing service (Admin only)
    */
   async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
+
+      // Service layer handles validation and cache invalidation
       const service = await serviceService.update(id, req.body);
+
       ResponseWrapper.success(res, service, 'Service updated');
     } catch (error) {
       next(error);
@@ -91,11 +98,14 @@ export class ServiceController {
 
   /**
    * DELETE /api/v1/services/:id
-   * Soft delete a service (Admin only).
+   * Soft delete a service (Admin only)
+   * Does not permanently remove the record from database
    */
   async delete(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       await serviceService.delete(req.params.id);
+
+      // Return 204 No Content for successful deletion
       ResponseWrapper.success(res, null, 'Service deleted', 204);
     } catch (error) {
       next(error);

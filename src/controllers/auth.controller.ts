@@ -1,9 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { ResponseWrapper } from '../utils/response';
-import prisma from '../config/database';
 import { authService } from '../services/service.container';
 import { config } from '../config/env';
+import { UnauthorizedError } from '../utils/errors';
 
 export class AuthController {
   async register(req: Request, res: Response, next: NextFunction) {
@@ -21,21 +21,27 @@ export class AuthController {
     try {
       const { email, password } = req.body;
 
-      // Note: passing `res` to service indicates that service is handling side-effects (e.g., setting cookies)
-      // This slightly breaks separation of concerns (service becomes HTTP-aware)
-      const result = await authService.login(email, password, res);
+      const { user, accessToken, refreshToken } = await authService.login(email, password);
 
-      ResponseWrapper.success(res, result, 'Login successful');
+    res.cookie('refreshToken', refreshToken, {
+        httpOnly: true,
+        secure: config.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000, 
+        path: '/',
+      });
+
+       ResponseWrapper.success(res, { user, accessToken }, 'Login successful');
     } catch (error) { next(error); }
   }
 
   async refresh(req: Request, res: Response, next: NextFunction) {
     try {
-      const refreshToken = req.cookies.refreshToken;
+      const refreshToken = req.cookies?.refreshToken;
 
       // Explicit guard: refresh flow depends entirely on cookie presence
-      if (!refreshToken) {
-        return ResponseWrapper.error(res, 'No refresh token', 401, 'NO_REFRESH_TOKEN');
+       if (!refreshToken) {
+        throw new UnauthorizedError('Missing refresh token');
       }
 
       // Handles validation + rotation (likely invalidates old token and issues new pair)
@@ -48,7 +54,8 @@ export class AuthController {
         httpOnly: true,
         secure: config.NODE_ENV === 'production',
         sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+        path: '/',
       });
 
       ResponseWrapper.success(res, { accessToken: tokens.accessToken }, 'Token refreshed');
@@ -57,19 +64,22 @@ export class AuthController {
 
   async logout(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const refreshToken = req.cookies.refreshToken;
+      const refreshToken = req.cookies?.refreshToken 
 
+      // best-effort logout (idempotent)
       if (refreshToken) {
-        // Instead of deleting, token is soft-revoked (keeps audit trail)
-        // updateMany used in case of duplicates (defensive, though token is unique in schema)
-        await prisma.refreshToken.updateMany({
-          where: { token: refreshToken },
-          data: { revokedAt: new Date() }
-        });
-      }
+      await authService.logout(refreshToken);
+    }
+      
 
       // Clears cookie from client regardless of DB state
-      res.clearCookie('refreshToken');
+      res.clearCookie('refreshToken', {
+        httpOnly: true,
+        secure: config.NODE_ENV === 'production',
+        sameSite: 'strict',
+        path: '/',
+      });
+
 
       ResponseWrapper.success(res, null, 'Logged out successfully');
     } catch (error) { next(error); }

@@ -3,21 +3,67 @@ import { cacheService } from './cache.service';
 import { NotFoundError, ConflictError } from '../utils/errors';
 
 /**
- * ServiceService (Improved Version)
- * ---------------------------------
- * Handles business logic for Service entity with:
+ * ServiceService
+ * Handles business logic for Service entity including:
  * - Optimized caching strategy (no pattern deletion)
  * - Defensive validations
  * - Soft delete support
- * - Better consistency handling
+ * - Filtering and pagination logic
  */
 export class ServiceService {
 
   /**
-   * Get all active services
+   * Get paginated and filtered list of active services
+   * Supports search, price range filtering, and custom sorting
+   */
+  async getAll(filters: {
+    skip?: number;
+    take?: number;
+    sortBy?: string;
+    order?: 'asc' | 'desc';
+    search?: string;
+    minPrice?: number;
+    maxPrice?: number;
+  }) {
+    const { skip, take, sortBy, order, search, minPrice, maxPrice } = filters;
+
+    // Build where conditions dynamically
+    const where: any = { isAvailable: true, deletedAt: null };
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+
+    if (minPrice !== undefined) {
+      where.price = { ...where.price, gte: minPrice };
+    }
+
+    if (maxPrice !== undefined) {
+      where.price = { ...where.price, lte: maxPrice };
+    }
+
+    // Build orderBy condition with whitelist validation
+    let orderBy: any = { createdAt: 'desc' };
+    if (sortBy && ['name', 'price', 'duration', 'createdAt'].includes(sortBy)) {
+      orderBy = { [sortBy]: order === 'asc' ? 'asc' : 'desc' };
+    }
+
+    const [services, total] = await Promise.all([
+      prisma.service.findMany({ where, orderBy, skip, take }),
+      prisma.service.count({ where })
+    ]);
+
+    return { services, total };
+  }
+
+  /**
+   * Get all active services without pagination
    * Cached globally for fast reads
    */
-  async getAll() {
+  async getAllCached() {
     return cacheService.getOrSet('services:all', async () => {
       return prisma.service.findMany({
         where: {
@@ -80,7 +126,7 @@ export class ServiceService {
       }
     });
 
-    // Better cache strategy: invalidate only known keys
+    // Invalidate only known cache keys
     await cacheService.delete('services:all');
 
     return service;

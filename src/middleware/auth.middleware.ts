@@ -24,11 +24,7 @@ export interface AuthRequest extends Request {
  * - Payload sanity checks
  * - Safer error handling
  */
-export const authenticate = (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
+export const authenticate = (req: AuthRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
 
   // 1. Check if Authorization header exists and has Bearer token
@@ -40,7 +36,9 @@ export const authenticate = (
 
   try {
     // 2. Verify JWT token integrity and signature
-    const decoded = jwt.verify(token, config.JWT_SECRET);
+    const decoded = jwt.verify(token, config.JWT_SECRET, {
+      algorithms: ['HS256']
+    });
 
     // 3. Runtime type validation (avoid unsafe casting)
     if (
@@ -76,7 +74,7 @@ export const authenticate = (
     next();
   } catch (error) {
     // 5. Generic error to avoid leaking JWT details
-    logger.error('JWT verification failed : ' , error)
+    logger.error('JWT verification failed : ', error);
     return next(new UnauthorizedError('Invalid or expired token'));
   }
 };

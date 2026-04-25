@@ -21,7 +21,8 @@ const { authServiceMock } = vi.hoisted(() => ({
   authServiceMock: {
     register: vi.fn(),
     login: vi.fn(),
-    refreshAccessToken: vi.fn()
+    refreshAccessToken: vi.fn(),
+    logout: vi.fn()
   }
 }));
 
@@ -29,18 +30,9 @@ vi.mock('../../../src/services/service.container', () => ({
   authService: authServiceMock
 }));
 
-vi.mock('../../../src/config/database', () => ({
-  default: {
-    refreshToken: {
-      updateMany: vi.fn()
-    }
-  }
-}));
-
 import jwt from 'jsonwebtoken';
 import authRoutes from '../../../src/routes/v1/auth.routes';
 import { errorHandler } from '../../../src/middleware/error.middleware';
-import prisma from '../../../src/config/database';
 
 const makeApp = () => {
   const app = express();
@@ -91,7 +83,8 @@ describe('Integration: auth endpoints', () => {
   it('POST /login returns 200', async () => {
     authServiceMock.login.mockResolvedValue({
       user: { id: '1', email: 'a@a.com' },
-      accessToken: 'access'
+      accessToken: 'access',
+      refreshToken: 'refresh'
     });
 
     const app = makeApp();
@@ -103,6 +96,9 @@ describe('Integration: auth endpoints', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.accessToken).toBe('access');
+    expect(res.headers['set-cookie']).toEqual(
+      expect.arrayContaining([expect.stringMatching(/refreshToken=refresh/i)])
+    );
   });
 
   it('POST /refresh requires cookie (after auth passes)', async () => {
@@ -113,7 +109,7 @@ describe('Integration: auth endpoints', () => {
 
     expect(res.status).toBe(401);
     expect(res.body.success).toBe(false);
-    expect(res.body.code).toBe('NO_REFRESH_TOKEN');
+    expect(res.body.error).toBe('Missing refresh token');
   });
 
   it('POST /refresh sets new refresh cookie and returns access token', async () => {
@@ -137,7 +133,7 @@ describe('Integration: auth endpoints', () => {
   });
 
   it('POST /logout clears cookie and revokes token when present', async () => {
-    (prisma.refreshToken.updateMany as any).mockResolvedValue({ count: 1 });
+    authServiceMock.logout.mockResolvedValue(undefined);
 
     const app = makeApp();
     const res = await request(app)
@@ -147,9 +143,20 @@ describe('Integration: auth endpoints', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(prisma.refreshToken.updateMany).toHaveBeenCalled();
+    expect(authServiceMock.logout).toHaveBeenCalledWith('to-revoke');
     expect(res.headers['set-cookie']).toEqual(
       expect.arrayContaining([expect.stringMatching(/refreshToken=;/i)])
     );
+  });
+
+  it('POST /logout remains idempotent when refresh cookie is missing', async () => {
+    const app = makeApp();
+    const res = await request(app)
+      .post('/api/v1/auth/logout')
+      .set('Authorization', 'Bearer access');
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(authServiceMock.logout).not.toHaveBeenCalled();
   });
 });

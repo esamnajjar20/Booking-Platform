@@ -22,7 +22,7 @@ const redis = new Redis({
 });
 
 // Fired when TCP connection is established (not necessarily ready for commands yet)
-redis.on('connect', () => logger.info('🔴 Redis connected'));
+redis.on('connect', () => logger.info('Redis connected'));
 
 // Centralized error logging (connection issues, timeouts, etc.)
 redis.on('error', (err) => logger.error('Redis error:', err));

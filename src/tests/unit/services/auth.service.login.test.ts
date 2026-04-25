@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AuthService } from '../../../../src/services/auth.service';
-import { Response } from 'express';
 
 vi.mock('bcrypt', () => ({
   default: {
@@ -38,6 +37,7 @@ vi.mock('../../../../src/config/database', () => ({
     },
     refreshToken: {
       create: vi.fn(),
+      findUnique: vi.fn(),
       findFirst: vi.fn(),
       findMany: vi.fn(),
       update: vi.fn(),
@@ -53,17 +53,11 @@ import prisma from '../../../../src/config/database';
 
 describe('AuthService - login', () => {
   let service: AuthService;
-  let res: Response;
 
   beforeEach(() => {
     vi.clearAllMocks();
 
     service = new AuthService();
-
-    res = {
-      cookie: vi.fn(),
-      clearCookie: vi.fn()
-    } as any;
 
     (bcrypt.hash as any).mockResolvedValue('hashed');
     (bcrypt.compare as any).mockResolvedValue(true);
@@ -82,16 +76,17 @@ describe('AuthService - login', () => {
       role: 'USER'
     });
 
-    const result = await service.login('a@a.com', '123', res);
+    (prisma.refreshToken.create as any).mockResolvedValue({ token: 'refresh-token' });
+    const result = await service.login('a@a.com', '123');
 
     expect(result.accessToken).toBeDefined();
-    expect(res.cookie).toHaveBeenCalled();
+    expect(result.refreshToken).toBeDefined();
   });
 
   it('rejects invalid credentials (no user)', async () => {
     (prisma.user.findUnique as any).mockResolvedValue(null);
 
-    await expect(service.login('x', 'y', res)).rejects.toThrow(
+    await expect(service.login('x', 'y')).rejects.toThrow(
       'Invalid credentials'
     );
   });
@@ -104,7 +99,7 @@ describe('AuthService - login', () => {
 
     (bcrypt.compare as any).mockResolvedValue(false);
 
-    await expect(service.login('x', 'y', res)).rejects.toThrow(
+    await expect(service.login('x', 'y')).rejects.toThrow(
       'Invalid credentials'
     );
   });
@@ -117,7 +112,8 @@ describe('AuthService - login', () => {
       role: 'USER'
     });
 
-    await service.login('x', 'y', res);
+    (prisma.refreshToken.create as any).mockResolvedValue({ token: 'refresh-token' });
+    await service.login('x', 'y');
 
     expect(redis.del).toHaveBeenCalled();
   });
@@ -125,7 +121,7 @@ describe('AuthService - login', () => {
   it('increments failed attempts', async () => {
     (prisma.user.findUnique as any).mockResolvedValue(null);
 
-    await expect(service.login('x', 'wrong', res)).rejects.toThrow();
+    await expect(service.login('x', 'wrong')).rejects.toThrow();
 
     expect(redis.incr).toHaveBeenCalled();
   });
@@ -136,7 +132,7 @@ describe('AuthService - login', () => {
       return null;
     });
 
-    await expect(service.login('x', 'y', res)).rejects.toThrow(/locked/i);
+    await expect(service.login('x', 'y')).rejects.toThrow(/locked/i);
   });
 });
 
